@@ -8,7 +8,7 @@ from typing import Optional, Any
 from fastapi import FastAPI
 from gradio import Blocks
 
-from modules import errors, timer, extensions, shared, util
+from modules import errors, timer, extensions, shared, ui_performance, util
 
 
 def report_exception(c, job):
@@ -279,10 +279,15 @@ def ui_tabs_callback():
     res = []
 
     for c in ordered_callbacks('ui_tabs'):
+        started = ui_performance.start()
+        callback_result = None
         try:
-            res += c.callback() or []
+            callback_result = c.callback() or []
+            res += callback_result
         except Exception:
             report_exception(c, 'ui_tabs_callback')
+        finally:
+            ui_performance.record(f"extension tab: {c.name}", started, callback_result)
 
     return res
 

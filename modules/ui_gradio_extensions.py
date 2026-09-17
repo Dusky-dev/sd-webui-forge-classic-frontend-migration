@@ -17,6 +17,10 @@ def javascript_html():
     script_js = os.path.join(script_path, "script.js")
     head += f'<script type="text/javascript" src="{webpath(script_js)}"></script>\n'
 
+    if shared.cmd_opts.log_ui_performance:
+        ui_performance_js = os.path.join(script_path, "html", "ui-performance.js")
+        head += f'<script type="text/javascript" src="{webpath(ui_performance_js)}"></script>\n'
+
     for script in scripts.list_scripts("javascript", ".js"):
         head += f'<script type="text/javascript" src="{webpath(script.path)}"></script>\n'
 

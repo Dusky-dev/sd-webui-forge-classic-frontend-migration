@@ -14,7 +14,7 @@ from PIL import Image, PngImagePlugin  # noqa: F401
 import modules.infotext_utils as parameters_copypaste
 import modules.processing_scripts.comments as comments
 import modules.shared as shared
-from modules import extra_networks, gradio_extensions, launch_utils, paths_internal, processing, progress, prompt_parser, script_callbacks, scripts, sd_models, sd_samplers, sd_schedulers, shared_items, sysinfo, timer, ui_checkpoint_merger, ui_common, ui_extensions, ui_extra_networks, ui_loadsave, ui_postprocessing, ui_settings, ui_toprow  # noqa: F401
+from modules import extra_networks, gradio_extensions, launch_utils, paths_internal, processing, progress, prompt_parser, script_callbacks, scripts, sd_models, sd_samplers, sd_schedulers, shared_items, sysinfo, timer, ui_checkpoint_merger, ui_common, ui_extensions, ui_extra_networks, ui_loadsave, ui_performance, ui_postprocessing, ui_settings, ui_toprow  # noqa: F401
 from modules.call_queue import wrap_gradio_call, wrap_gradio_call_no_job, wrap_gradio_gpu_call, wrap_queued_call  # noqa: F401
 from modules.infotext_utils import PasteField
 from modules.paths import script_path
@@ -192,6 +192,9 @@ def create_ui():
     import modules.img2img
     import modules.txt2img
 
+    ui_performance.reset()
+    total_started = ui_performance.start()
+
     reload_javascript()
 
     parameters_copypaste.reset()
@@ -199,6 +202,7 @@ def create_ui():
     settings = ui_settings.UiSettings()
     settings.register_settings()
 
+    txt2img_started = ui_performance.start()
     scripts.scripts_current = scripts.scripts_txt2img
     scripts.scripts_txt2img.initialize_scripts(is_img2img=False)
 
@@ -477,6 +481,9 @@ def create_ui():
         if shared.opts.paste_safe_guard:
             toprow.hook_paste_guard()
 
+    ui_performance.record("build: txt2img", txt2img_started, txt2img_interface)
+
+    img2img_started = ui_performance.start()
     scripts.scripts_current = scripts.scripts_img2img
     scripts.scripts_img2img.initialize_scripts(is_img2img=True)
 
@@ -826,11 +833,16 @@ def create_ui():
         if shared.opts.paste_safe_guard:
             toprow.hook_paste_guard()
 
+    ui_performance.record("build: img2img", img2img_started, img2img_interface)
+
     scripts.scripts_current = None
 
+    extras_started = ui_performance.start()
     with gr.Blocks(analytics_enabled=False) as extras_interface:
         ui_postprocessing.create_ui()
+    ui_performance.record("build: Extras", extras_started, extras_interface)
 
+    pnginfo_started = ui_performance.start()
     with gr.Blocks(analytics_enabled=False) as pnginfo_interface:
         with ResizeHandleRow(equal_height=False):
             with gr.Column(variant="panel"):
@@ -858,13 +870,18 @@ def create_ui():
             inputs=[image],
             outputs=[html, generation_info, html2],
         )
+    ui_performance.record("build: PNG Info", pnginfo_started, pnginfo_interface)
 
+    merger_started = ui_performance.start()
     modelmerger_ui = ui_checkpoint_merger.UiCheckpointMerger()
+    ui_performance.record("build: Checkpoint Merger", merger_started, modelmerger_ui.blocks)
 
     loadsave = ui_loadsave.UiLoadsave(cmd_opts.ui_config_file)
     ui_settings_from_file = loadsave.ui_settings.copy()
 
+    settings_started = ui_performance.start()
     settings.create_ui(loadsave, dummy_component)
+    ui_performance.record("build: Settings", settings_started, settings.interface)
 
     interfaces = [
         (txt2img_interface, "txt2img", "txt2img"),
@@ -874,10 +891,14 @@ def create_ui():
         (modelmerger_ui.blocks, "Checkpoint Merger", "modelmerger"),
     ]
 
+    extension_tabs_started = ui_performance.start()
     interfaces += script_callbacks.ui_tabs_callback()
+    ui_performance.record("build: all extension tabs", extension_tabs_started)
     interfaces += [(settings.interface, "Settings", "settings")]
 
+    extensions_started = ui_performance.start()
     extensions_interface = ui_extensions.create_ui()
+    ui_performance.record("build: Extensions manager", extensions_started, extensions_interface)
     interfaces += [(extensions_interface, "Extensions", "extensions")]
 
     shared.tab_names = []
@@ -896,11 +917,13 @@ def create_ui():
             for interface, label, ifid in sorted_interfaces:
                 if label in shared.opts.hidden_tabs:
                     continue
+                render_started = ui_performance.start()
                 with gr.TabItem(label, id=ifid, elem_id=f"tab_{ifid}"):
                     interface.render()
 
                 if ifid not in ["extensions", "settings"]:
                     loadsave.add_block(interface, ifid)
+                ui_performance.record(f"render: {label} ({ifid})", render_started, interface)
 
             loadsave.add_component(f"webui/Tabs@{tabs.elem_id}", tabs)
 
@@ -926,6 +949,9 @@ def create_ui():
     if ui_settings_from_file != loadsave.ui_settings:
         loadsave.dump_defaults()
     demo.ui_loadsave = loadsave
+
+    ui_performance.record("TOTAL create_ui", total_started, demo)
+    ui_performance.report()
 
     return demo
 

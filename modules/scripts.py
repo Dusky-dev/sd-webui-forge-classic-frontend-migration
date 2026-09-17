@@ -650,11 +650,21 @@ class ScriptRunner:
 
         script.args_from = len(self.inputs)
         script.args_to = len(self.inputs)
+        from modules import ui_performance
+
+        started = ui_performance.start()
+        inputs_before = len(self.inputs)
 
         try:
             self.create_script_ui_inner(script)
         except Exception:
             errors.report(f"Error creating UI for {script.name}: ", exc_info=True)
+        finally:
+            ui_performance.record(
+                f"{script.tabname} script: {ui_performance.source_label(script.filename)}",
+                started,
+                components=len(self.inputs) - inputs_before,
+            )
 
     def create_script_ui_inner(self, script):
         import modules.api.models as api_models
