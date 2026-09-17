@@ -7,6 +7,7 @@
     let addedNodes = 0;
     let longTaskCount = 0;
     let longTaskTime = 0;
+    let longTasksSupported = false;
 
     function observeMount() {
         const root = gradioApp();
@@ -22,6 +23,8 @@
     }
 
     try {
+        if (!(PerformanceObserver.supportedEntryTypes || []).includes("longtask")) throw new Error("longtask is not supported");
+
         const longTaskObserver = new PerformanceObserver((list) => {
             for (const entry of list.getEntries()) {
                 longTaskCount++;
@@ -29,6 +32,7 @@
             }
         });
         longTaskObserver.observe({type: "longtask", buffered: true});
+        longTasksSupported = true;
         window.__forgeUiPerformanceLongTaskObserver = longTaskObserver;
     } catch (_) {
         // Firefox currently does not expose the Long Tasks API.
@@ -71,6 +75,7 @@
                 mutation_batches: mutationBatches,
                 mutation_records: mutationRecords,
                 directly_added_nodes: addedNodes,
+                long_tasks_supported: longTasksSupported,
                 long_tasks: longTaskCount,
                 long_task_time_ms: Math.round(longTaskTime),
             },

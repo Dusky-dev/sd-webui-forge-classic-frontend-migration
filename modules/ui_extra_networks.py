@@ -737,6 +737,12 @@ def create_ui(interface: gr.Blocks, unrelated_tabs, tabname):
     ui.stored_extra_pages = pages_in_preferred_order(extra_pages.copy())
     ui.tabname = tabname
 
+    lazy_lora_browser = bool(getattr(shared.cmd_opts, "lazy_lora_browser", False))
+    lazy_page_loaded = {"lora": False} if lazy_lora_browser else {}
+
+    def is_lazy_page(page):
+        return lazy_lora_browser and page.extra_networks_tabname == "lora"
+
     related_tabs = []
 
     for page in ui.stored_extra_pages:
@@ -760,9 +766,22 @@ def create_ui(interface: gr.Blocks, unrelated_tabs, tabname):
     for tab in unrelated_tabs:
         tab.select(fn=None, _js=f"function(){{extraNetworksUnrelatedTabSelected('{tabname}');}}", show_progress=False)
 
-    for page, tab in zip(ui.stored_extra_pages, related_tabs):
+    for page_index, (page, tab) in enumerate(zip(ui.stored_extra_pages, related_tabs)):
         jscode = "function(){{" f"extraNetworksTabSelected('{tabname}', '{tabname}_{page.extra_networks_tabname}_prompts', {str(page.allow_prompt).lower()}, {str(page.allow_negative_prompt).lower()}, '{tabname}_{page.extra_networks_tabname}');" f"applyExtraNetworkFilter('{tabname}_{page.extra_networks_tabname}');" "}}"
-        tab.select(fn=None, _js=jscode, show_progress=False)
+
+        if is_lazy_page(page):
+            def load_lazy_page(page=page):
+                page_name = page.extra_networks_tabname
+                if lazy_page_loaded[page_name]:
+                    return gr.skip()
+
+                page_html = page.create_html(ui.tabname)
+                lazy_page_loaded[page_name] = True
+                return page_html
+
+            tab.select(fn=load_lazy_page, outputs=ui.pages[page_index], show_progress=False).then(fn=None, _js=jscode, show_progress=False)
+        else:
+            tab.select(fn=None, _js=jscode, show_progress=False)
 
         def refresh():
             for pg in ui.stored_extra_pages:
@@ -774,7 +793,10 @@ def create_ui(interface: gr.Blocks, unrelated_tabs, tabname):
         button_refresh.click(fn=refresh, outputs=ui.pages).then(fn=lambda: None, _js="function(){ " + f"applyExtraNetworkFilter('{tabname}_{page.extra_networks_tabname}');" + " }").then(fn=lambda: None, _js="setupAllResizeHandles")
 
     def create_html():
-        ui.pages_contents = [pg.create_html(ui.tabname) for pg in ui.stored_extra_pages]
+        ui.pages_contents = [
+            gr.skip() if is_lazy_page(pg) and not lazy_page_loaded[pg.extra_networks_tabname] else pg.create_html(ui.tabname)
+            for pg in ui.stored_extra_pages
+        ]
 
     def pages_html():
         if not ui.pages_contents:
